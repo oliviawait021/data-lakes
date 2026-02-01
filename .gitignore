@@ -1,0 +1,7 @@
+.DS_Store
+.hidden/
+admin/
+aqua-node/minio/.minio.sys/*
+aqua-node/minio/data-lake/*
+raw-input/*
+*_sol.py
