@@ -38,6 +38,14 @@ First, let's do some quick setup tasks:
 
 ---
 
+## Before Moving On: A couple of custom videos just for you
+
+Before you dive into the python required for this assignment, it will be really helpful if you (a) don't see any "yellow squiggles" under your module names when you look at the two python files, and (b) are familiar with the python debugger. If you need help with either of those things, I've recorded some handy walkthroughs to help you out. Both are short and to the point, and are included for you at no extra charge.
+- If you're seeing yello squiggles, it means your VSCode is not using your `.venv` virtual environment as the python interpreter. [This video](https://www.dropbox.com/scl/fi/6ep13zgjltplc86m4r7wz/no_more_yellow_squiggles.mov?rlkey=5zzhzb4m5dxvtohydt1d28kv3&dl=0) will get you there.
+- Once you've taken care of the yellow squiggles, you are ready to learn how to use the Python Debugger. [This video](https://www.dropbox.com/scl/fi/id0t1pinpvsk3oqo7cbhb/python-debugger.mp4?rlkey=4tsbr222jiwi29ixsna3nyfo8&dl=0) will take you through it.
+
+---
+
 ## Task 2: Ingest Data into the Data Lake
 
 Your first real task is to create a routine to ingest the data files (which you can unzip into a `raw-input` folder) into the data lake. You'll need to figure out the best way to work with the files in `raw-input` to organize the raw data layer of the data lake into the hierarchy depicted in the structure below. (Note that this task only involves the `/raw/` area of the data lake; the `/analytics/` area will be populated in a later task.) Pay careful attention to what is defining the partition structure in each of the subfolders.
