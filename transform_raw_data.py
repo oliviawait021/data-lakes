@@ -6,9 +6,9 @@ from io import BytesIO
 
 # =================== CONFIGURATION ===================
 # Figure out these first three from your familiarity with how the docker compose file works:
-MINIO_ENDPOINT = ""
-MINIO_ACCESS_KEY = ""
-MINIO_SECRET_KEY = ""
+MINIO_ENDPOINT = "http://localhost:9000"
+MINIO_ACCESS_KEY = "minio_access_key"
+MINIO_SECRET_KEY = "minio_secret_key"
 
 # You don't need to change these:
 BUCKET_NAME = "data-lake"
@@ -27,8 +27,22 @@ minio_client = boto3.client(
 # the contents, and find and extract the "platform" and "date" information.
 def extract_metadata_from_csv(file_contents):
     platform, date = None, None
-    
-    # **[Logic for extracting the platform and date goes here.]**
+
+    for line in file_contents:
+        decoded = line.decode("utf-8").strip() if isinstance(line, bytes) else line.strip()
+        if not decoded.startswith("#"):
+            break  # No more metadata lines
+        decoded_lower = decoded[1:].strip().lower()
+        if decoded_lower.startswith("platform"):
+            if ":" in decoded_lower:
+                platform = decoded_lower.split(":", 1)[1].strip()
+            elif "=" in decoded_lower:
+                platform = decoded_lower.split("=", 1)[1].strip()
+        elif decoded_lower.startswith("date"):
+            if ":" in decoded_lower:
+                date = decoded_lower.split(":", 1)[1].strip()
+            elif "=" in decoded_lower:
+                date = decoded_lower.split("=", 1)[1].strip()
 
     return platform, date
 
@@ -58,35 +72,45 @@ def process_orders():
         # Now you can look through all of the raw files and do some processing. I'll 
         # give you the logic for reading the files because it's a bit tricky:
         for file in raw_files:
+            if file["Key"].endswith("/"):
+                pbar.update(1)
+                continue  # Skip directory markers
+
             obj = minio_client.get_object(Bucket=BUCKET_NAME, Key=file["Key"])
-            file_contents = obj["Body"].readlines() # the file is actually stored in the "Body" of the MinIO object
-            
+            file_contents = obj["Body"].readlines()  # the file is actually stored in the "Body" of the MinIO object
+
             # Now you can use the extract_metadata function defined above to get the
             # platform and date
             platform, date = extract_metadata_from_csv(file_contents)
+
+            # Fallback: extract date from file key if not in metadata (e.g. raw/orders/2025/01/01/orders_2025-01-01_xxx.csv)
+            if not date:
+                key_parts = file["Key"].split("/")
+                filename = key_parts[-1] if key_parts else ""
+                if filename.startswith("orders_") and "_" in filename:
+                    date = filename.split("_")[1]  # YYYY-MM-DD
+
             if not platform or not date:
                 print(f"⚠️ Skipping {file['Key']} due to missing metadata.")
+                pbar.update(1)
                 continue
-            
+
             # Finally, you can us an in-memory buffer (BytesIO) to read the data into a pandas dataframe
             # (And yes, that's complex, so here's the code to do it)
             df = pd.read_csv(BytesIO(b"".join(file_contents)), comment="#", names=order_columns)
-            
-            # Okay now you get to be creative and do any cleaning/formatting you find to be necessary
-            
 
-            # **[Add any cleaning logic here, which you can do directly on the pandas df object]**
-            
+            # Format order_time as datetime for Trino compatibility
+            df["order_time"] = pd.to_datetime(df["order_time"])
 
-            # Lastly, you'll need to figure out the logic for creating the analytics structure
-            # that is defined in the hierarchy example provided in the instructions. We'll start 
-            # with an analytics prefix, but then you'll need to programatically construct the 
-            # full length key that produces the desired hierarchy.
+            year, month, day = date.split("-") if len(date) >= 10 else (None, None, None)
+            if not all([year, month, day]):
+                pbar.update(1)
+                continue
+
+            # Analytics path: analytics/orders/platform={platform}/year={year}/month={month}/day={day}/orders_{date}_{hash}.parquet
             analytics_prefix = "analytics/orders"
-            
-            # **[Add key construction logic here (ultimately modifying the analytics_key assignment operation)]**
-            
-            analytics_key = f"{analytics_prefix}"           
+            filename_base = file["Key"].split("/")[-1].replace(".csv", "")
+            analytics_key = f"{analytics_prefix}/platform={platform}/year={year}/month={month}/day={day}/{filename_base}.parquet"
 
             # Lastly, I'll give you the code that actually inserts the parquet-formatted data in
             # the data lake:
@@ -135,30 +159,54 @@ def process_clickstream():
         # Now you can look through all of the raw files and do some processing. I'll 
         # give you the logic for reading the files because it's a bit tricky:
         for file in raw_files:
+            if file["Key"].endswith("/"):
+                pbar.update(1)
+                continue  # Skip directory markers
+            if not file["Key"].endswith(".json"):
+                pbar.update(1)
+                continue  # Only process JSON files
+
             obj = minio_client.get_object(Bucket=BUCKET_NAME, Key=file["Key"])
             json_content = json.loads(obj["Body"].read().decode("utf-8"))
-            
-            # The json_content object is just a dict, so now you can figure out how
-            # to extract the metadata that we need from the json structure. 
-            
-            
-            # **[Add logic to extract metadata from the json_content object here]**
-            df = pd.DataFrame()
-            
-            # Now convert the json data to a dataframe that will make it easy to 
-            # convert to a parquet file later. You can also apply any necessary
-            # formatting or cleaning to the columns of the dataframe here.
-            
-            # **[Add logic for converting json to a dataframe, as well as any cleaning/formatting.]**
-            
-            # Again, you'll need to figure out the logic for creating the analytics structure 
-            # In the data lake. (This will likely be very similar or identical to what you came
-            # up with for the orders CSVs above.)
-            analytics_prefix = "analytics/clickstream"
-            
-            # **[Add key construction logic here (ultimately modifying the analytics_key assignment operation)]**
 
-            analytics_key = f"{analytics_prefix}"           
+            # Extract metadata from file_metadata
+            file_metadata = json_content.get("file_metadata", {})
+            platform = file_metadata.get("platform")
+            date_str = file_metadata.get("date")
+            export_id = file_metadata.get("export_id")
+
+            if not platform or not date_str or not export_id:
+                print(f"⚠️ Skipping {file['Key']} due to missing metadata.")
+                pbar.update(1)
+                continue
+
+            year, month, day = date_str.split("-") if len(date_str) >= 10 else (None, None, None)
+            if not all([year, month, day]):
+                pbar.update(1)
+                continue
+
+            # Convert data array to DataFrame
+            data = json_content.get("data", [])
+            if not data:
+                pbar.update(1)
+                continue
+
+            df = pd.DataFrame(data)
+
+            # Ensure all expected columns exist (search_query may be missing in some events)
+            for col in ["user_id", "event_time", "event_type", "page", "search_query", "product_id"]:
+                if col not in df.columns:
+                    df[col] = None
+
+            # Format event_time as datetime for Trino compatibility
+            df["event_time"] = pd.to_datetime(df["event_time"])
+
+            # Keep only columns that belong in the parquet (no partition columns)
+            df = df[["user_id", "event_time", "event_type", "page", "search_query", "product_id"]]
+
+            # Analytics path: analytics/clickstream/platform={platform}/year={year}/month={month}/day={day}/{export_id}.parquet
+            analytics_prefix = "analytics/clickstream"
+            analytics_key = f"{analytics_prefix}/platform={platform}/year={year}/month={month}/day={day}/{export_id}.parquet"           
 
             # Again, I'll give you the code that actually inserts the parquet-formatted data in
             # the data lake:
