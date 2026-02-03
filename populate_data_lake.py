@@ -10,7 +10,7 @@ MINIO_ACCESS_KEY = "minio_access_key"
 MINIO_SECRET_KEY = "minio_secret_key"
 
 # You don't need to change the next two:
-RAW_INPUT_DIR = "raw-input"
+RAW_INPUT_DIR = "more-data"
 BUCKET_NAME = "data-lake"
 
 # Connect to MinIO using boto3
