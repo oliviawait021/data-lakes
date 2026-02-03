@@ -45,10 +45,23 @@ def upload_to_minio(file_path):
     #         files can be derived from the hierachy/architecture image
     #         in the instructions.
 
+    file_path = Path(file_path)
+    file_name = file_path.name
 
-    # **[Logic for constructing the insertion location key goes here.]**
-    
-    s3_path = "raw"
+    if file_name.endswith(".json"):
+        # Clickstream: raw/clickstream/{first_char_of_uuid}/{filename}.json
+        # e.g. c3e374df-0b45-44d8-b250-f300e52b8416.json -> raw/clickstream/c/c3e374df-0b45-44d8-b250-f300e52b8416.json
+        partition = file_name[0]
+        s3_path = f"raw/clickstream/{partition}/{file_name}"
+    elif file_name.endswith(".csv") and file_name.startswith("orders_"):
+        # Orders: raw/orders/{year}/{month}/{day}/orders_YYYY-MM-DD_{hash}.csv
+        # e.g. orders_2025-01-01_530a28a4.csv -> raw/orders/2025/01/01/orders_2025-01-01_530a28a4.csv
+        date_part = file_name.split("_")[1]  # "2025-01-01"
+        year, month, day = date_part.split("-")
+        s3_path = f"raw/orders/{year}/{month}/{day}/{file_name}"
+    else:
+        # Fallback for unrecognized file types
+        s3_path = f"raw/{file_name}"
 
     # Here is the logic for actually uploading the file to the 
     # data lake. (No need to edit this code chunk.)
