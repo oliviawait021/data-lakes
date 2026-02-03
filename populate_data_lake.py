@@ -5,9 +5,9 @@ from tqdm import tqdm
 
 # =================== CONFIGURATION ===================
 # Figure out these first three from your familiarity with how the docker compose file works:
-MINIO_ENDPOINT = ""
-MINIO_ACCESS_KEY = ""
-MINIO_SECRET_KEY = ""
+MINIO_ENDPOINT = "http://localhost:9000"
+MINIO_ACCESS_KEY = "minio_access_key"
+MINIO_SECRET_KEY = "minio_secret_key"
 
 # You don't need to change the next two:
 RAW_INPUT_DIR = "raw-input"
